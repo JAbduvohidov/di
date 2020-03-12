@@ -19,17 +19,23 @@ func NewContainer() *container {
 	}
 }
 
-func (c *container) Provide(constructors ...interface{}) {
-	c.register(constructors)
-	c.wire()
-	log.Print(len(c.definitions))
-	log.Print(len(c.components))
+func (c *container) Provide(constructors ...interface{}) (err error) {
+	err = c.register(constructors)
+	if err != nil {
+		return err
+	}
+	err = c.wire()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *container) Component(target interface{}) {
 	if target == nil {
 		panic("errors: target cannot be nil")
 	}
+
 	targetValue := reflect.ValueOf(target)
 	targetType := targetValue.Type()
 	targetTypeType := targetValue.Elem().Type()
@@ -65,21 +71,24 @@ func (c *container) Stop() {
 	}
 }
 
-func (c *container) register(constructors []interface{}) {
+func (c *container) register(constructors []interface{}) (err error) {
 	for _, constructor := range constructors {
 		constructorType := reflect.TypeOf(constructor)
 		if constructorType.Kind() != reflect.Func {
-			panic(fmt.Errorf("%s must be constructor", constructorType.Name()))
+			err = errors.New(fmt.Sprintf("%s must be constructor", constructorType.Name()))
+			return err
 		}
 
 		if constructorType.NumOut() != 1 {
-			panic(fmt.Errorf("%s constructor must return only one result", constructorType.Name()))
+			err = errors.New(fmt.Sprintf("%s constructor must return only one result", constructorType.Name()))
+			return err
 		}
 
-		outType := constructorType.Out(0) // constructor must return component
+		outType := constructorType.Out(0)
 
 		if _, exists := c.definitions[outType]; exists {
-			panic(fmt.Errorf("ambiguous definition %s already exists", constructorType.Name()))
+			err = errors.New(fmt.Sprintf("ambiguous definition %s already exists", constructorType.Name()))
+			return err
 		}
 
 		paramsCount := constructorType.NumIn()
@@ -88,9 +97,10 @@ func (c *container) register(constructors []interface{}) {
 			constructor:  reflect.ValueOf(constructor),
 		}
 	}
+	return nil
 }
 
-func (c *container) wire() {
+func (c *container) wire() (err error) {
 	rest := make(map[reflect.Type]definition, len(c.definitions))
 	for key, value := range c.definitions {
 		rest[key] = value
@@ -124,10 +134,11 @@ func (c *container) wire() {
 		if wired == 0 {
 
 			for _, d := range rest {
-				fmt.Println(d.constructor.String(), d.dependencies)
+				log.Println(d.constructor.String(), d.dependencies)
 			}
 
-			panic(errors.New("some components has unmet dependencies"))
+			err := errors.New("some components has unmet dependencies")
+			return err
 		}
 	}
 }
